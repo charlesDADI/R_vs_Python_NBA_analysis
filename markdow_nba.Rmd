@@ -1,0 +1,146 @@
+---
+title: "Analyse des statistiques des joueurs de la NBA"
+output: html_document
+---
+L'objectif de cette séance est d'introduire les concepts de bases de la programmation statistique sous R. L'enjeu sera de permettre au lecteur d'être autonome dans le démarage un projet d'analyse de donnée sous R. Le second enjeu sera de comparer les commandes utilisées avers l'équivalent sous Python afin de souligner les ressemblances des langages lorsqu'il s'agit d'un travail d'analyse de données.
+Nous allons analyser un ensemble de données de joueurs de la NBA ainsi que leurs performances sur la saison 2013-2014. Pour chaque étape de l'analyse, nous allons vous montrer le code Python et R. C'est parti ! 
+
+### Définition du dossier de travail
+```{r}
+setwd("/home/charles-abner/works/R/R_Nba/")
+getwd()
+```
+
+
+### Lecture d'un fichier CSV
+```{r}
+nba <- read.csv("nba_2013.csv")
+```
+
+### Visualisation des premieres données  brutes
+```{r}
+head(nba)
+```
+
+### Descriptif technique des données
+```{r}
+str(nba)
+```
+
+### Sauvegarde au format Rdata
+```{r}
+save(nba, file="nba.RData")
+```
+### Trouver le nombre de joueurs
+```{r}
+dim(nba)
+```
+
+### Calculer la moyenne pour chaque variable
+Trouvons la valeur moyenne pour chaque statistique . Les colonnes , comme vous pouvez le voir, ont des noms tels que fg (buts de terrain effectuée) et AST ( passes ) . Ce sont les statistiques de la saison pour le joueur. 
+```{r}
+sapply(nba, mean, na.rm=TRUE)
+```
+
+### Diagramme de dispersion par paires
+```{r}
+library(GGally)
+ggpairs(nba[,c("ast", "fg", "trb")])
+```
+
+### Calculer des clusters de joueurs
+```{r}
+library(cluster)
+set.seed(1)
+isGoodCol <- function(col){
+   sum(is.na(col)) == 0 && is.numeric(col) 
+}
+goodCols <- sapply(nba, isGoodCol)
+clusters <- kmeans(nba[,goodCols], centers=5)
+labels <- clusters$cluster
+```
+
+### Calculer des clusters de joueurs
+```{r}
+library(cluster)
+set.seed(1)
+isGoodCol <- function(col){
+   sum(is.na(col)) == 0 && is.numeric(col) 
+}
+goodCols <- sapply(nba, isGoodCol)
+clusters <- kmeans(nba[,goodCols], centers=5)
+labels <- clusters$cluster
+```
+Afin de faciliter la tâche de clustering, nous retirons les variables non numérique ainsi que les colonnes avec des, ou des valeurs manquantes ( NA , Nan , etc ). Dans R , nous faisons cela en appliquant les fonctions is.na() et is.numeric() à chaque colonne. Nous utilisons ensuite le paquet de cluster pour effectuer un k-means. Nous identifions 5 cluster dans nos données. (Noter l'utilisation d'une graine aléatoire fixe pour pouvoir reproduire les résultats.)
+
+### Plot par clusters
+Nous pouvons maintenant représenter les joueurs en clusters pour découvrir des "figures" . Une façon de le faire est d'utiliser d'abord PCA pour transposer nos données dans un espace en 2 dimensions , représenter chaque point selon le symbole de son cluster.
+
+```{r}
+nba2d <- prcomp(nba[,goodCols], center=TRUE)
+twoColumns <- nba2d$x[,1:2]
+clusplot(twoColumns, labels)
+```
+
+### Division de notre dataset en un échantillon d'apprentissage et un échantillon de test
+Nous pouvons maintenant représenter les joueurs en clusters pour découvrir des "figures" . Une façon de le faire est d'utiliser d'abord PCA pour transposer nos données dans un espace en 2 dimensions , représenter chaque point selon le symbole de son cluster.
+
+```{r}
+trainRowCount <- floor(0.8 * nrow(nba))
+set.seed(1)
+trainIndex <- sample(1:nrow(nba), trainRowCount)
+train <- nba[trainIndex,]
+test <- nba[-trainIndex,]
+```
+
+### Régression linéaire univariée
+```{r}
+fit <- lm(ast ~ fg, data=train)
+predictions <- predict(fit, test)
+```
+
+
+### Calcul des statistiques pour le modèle 
+```{r}
+summary(fit)
+```
+
+### Arbre de classification
+```{r}
+library(tree)
+library(rpart)
+predictorColumns <- c("age", "mp", "fg", "trb", "stl", "blk")
+temp<-rpart.control(minbucket=50,minsplit=50,cp=0,xval=20)
+tree = rpart(train[predictorColumns], train$ast, data=train, method="class",
+                  parms=list(split="gini"),control=temp)
+plot(tree)
+text(tree)
+```
+
+### Apprentissage d'un modèle Random Forest
+Notre régression linéaire a bien fonctionné dans le cas seule variable , mais nous pensons qu'il peut y avoir des non-linéarités dans les données. Nous décidons alors de chercher ces relation à travers une forêt aléatoire .
+
+```{r}
+library(randomForest)
+
+rf <- randomForest(train[predictorColumns], train$ast, ntree=100)
+predictions <- predict(rf, test[predictorColumns])
+```
+
+### Détermination des variables les plus importantes
+La fonction d'importance ( ) nous donne une représentation de l'importance des variables dans la tâche de classification.
+
+```{r}
+importance(rf)
+varImpPlot(rf)
+```
+
+
+### Calcul de l'erreur de prédiction
+Nous calculer la MSE [link](https://en.wikipedia.org/wiki/Mean_squared_error)
+```{r}
+mean((test["ast"] - predictions)^2)
+```
+
+
+
